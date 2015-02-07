@@ -1,7 +1,7 @@
 mutt-notmuch-py
 ===============
 
-This is a version of the original mutt-notmuch script with some tweaks to work with replica of my IMAP folders.
+This is a version of the original mutt-notmuch script with some tweaks to work with replica of my IMAP folders served by MS Exchange.
 
 It will interactively ask you for a search query and then symlink the matching
 messages to ``$HOME/.cache/mutt_results``.
