@@ -24,12 +24,13 @@ Licensed under BSD
 
 import os
 import hashlib
+import subprocess
+import logging
 
-from commands import getoutput
+#from commands import getoutput
 from mailbox import Maildir
 from optparse import OptionParser
 from collections import defaultdict
-
 
 def digest(filename):
     with open(filename) as f:
@@ -47,20 +48,31 @@ def empty_dir(directory):
     box.clear()
 
 
-def command(cmd):
-    return getoutput(cmd)
+#def command(cmd):
+#    return getoutput(cmd)
 
 
 def main(dest_box, is_gmail):
     query = raw_input('Query: ')
 
-    command('mkdir -p %s/cur' % dest_box)
-    command('mkdir -p %s/new' % dest_box)
+    try:
+        os.mkdir('{0}/cur'.format(dest_box), 0775)
+        os.mkdir('{0}/new'.format(dest_box), 0775)
+    except OSError as e:
+        logging.debug(e)
+        pass
 
     empty_dir(dest_box)
 
-    files = command('notmuch search --output=files %s' % query).split('\n')
-
+    #files = command('notmuch search --output=files %s' % query).split('\n')
+    cmd = ['/home/arkamins/local/bin/notmuch', 'search', '--output=files', '"{0}"'.format(query)]
+    try:
+        files = subprocess.check_output(cmd, env={'NOTMUCH_CONFIG': '{0}/.notmuch.conf'.format(mail_dir)}).split('\n')
+    except subprocess.CalledProcessError as e:
+        print cmd
+        print('NOTMUCH_CONFIG: {0}/.notmuch.conf'.format(mail_dir))
+        raise e
+    logging.debug("Found files: {0}".format(len(files)))
     data = defaultdict(list)
     messages = []
 
@@ -72,12 +84,15 @@ def main(dest_box, is_gmail):
             sha = digest(f)
             data[sha].append(f)
         except IOError:
-            print('File %s does not exist' % f)
+            logging.warning('File %s does not exist' % f)
 
     for sha in data:
+        logging.debug("is_gmail = {0}, data[sha] = {1}".format(is_gmail, data[sha]))
         if is_gmail and len(data[sha]) > 1:
+            logging.debug("Appended is_gmail {0}".format(pick_all_mail(data[sha])))
             messages.append(pick_all_mail(data[sha]))
         else:
+            logging.debug("Appended {0}".format(data[sha][0]))
             messages.append(data[sha][0])
 
     for m in messages:
@@ -90,19 +105,25 @@ def main(dest_box, is_gmail):
 
 
 if __name__ == '__main__':
-    p = OptionParser("usage: %prog [OPTIONS] [RESULTDIR]")
+    p = OptionParser("usage: %prog [OPTIONS] [MAILDIR]")
     p.add_option('-g', '--gmail', dest='gmail',
                  action='store_true', default=True,
                  help='gmail-specific behavior')
     p.add_option('-G', '--not-gmail', dest='gmail',
                  action='store_false',
                  help='gmail-specific behavior')
+                 
     (options, args) = p.parse_args()
 
     if args:
-        dest = args[0]
+        mail_dir = args[0]
     else:
-        dest = '~/.cache/mutt_results'
+        mail_dir = '~/Maildir'
+    dest = '~/.mutt/cache_mutt_results'
+    logfile = '/tmp/notmuch.log'
+    logging.basicConfig(filename=logfile, level=logging.DEBUG)
+    logging.debug('Start mutt-notmuch.py in {0}'.format(logfile))
+    logging.debug("os.path.expanduser(dest).rstrip('/') = {0}".format(os.path.expanduser(dest).rstrip('/')))
 
     # Use expanduser() so that os.symlink() won't get weirded out by tildes.
     main(os.path.expanduser(dest).rstrip('/'), options.gmail)
