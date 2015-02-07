@@ -27,14 +27,14 @@ import hashlib
 import subprocess
 import logging
 
-#from commands import getoutput
 from mailbox import Maildir
 from optparse import OptionParser
 from collections import defaultdict
 
+
 def digest(filename):
-    with open(filename) as f:
-        return hashlib.sha1(f.read()).hexdigest()
+    with open(filename) as fh:
+        return hashlib.sha1(fh.read()).hexdigest()
 
 
 def pick_all_mail(messages):
@@ -48,13 +48,7 @@ def empty_dir(directory):
     box.clear()
 
 
-#def command(cmd):
-#    return getoutput(cmd)
-
-
-def main(dest_box, is_gmail):
-    query = raw_input('Query: ')
-
+def make_mbox_scaffold(dest_box):
     try:
         os.mkdir('{0}/cur'.format(dest_box), 0775)
         os.mkdir('{0}/new'.format(dest_box), 0775)
@@ -62,15 +56,23 @@ def main(dest_box, is_gmail):
         logging.debug(e)
         pass
 
+
+def main(dest_box, is_gmail):
+    query = raw_input('Query: ')
+
+    make_mbox_scaffold(dest_box)
     empty_dir(dest_box)
 
-    #files = command('notmuch search --output=files %s' % query).split('\n')
-    cmd = ['/home/arkamins/local/bin/notmuch', 'search', '--output=files', '"{0}"'.format(query)]
+    cmd = ['notmuch', 'search', '--output=files', '"{0}"'.format(query)]
     try:
-        files = subprocess.check_output(cmd, env={'NOTMUCH_CONFIG': '{0}/.notmuch.conf'.format(mail_dir)}).split('\n')
+        output = subprocess.check_output(
+            cmd,
+            env={'NOTMUCH_CONFIG': '{0}/.notmuch.conf'.format(mail_dir)}
+        )
+        files = output.split('\n')
     except subprocess.CalledProcessError as e:
-        print cmd
-        print('NOTMUCH_CONFIG: {0}/.notmuch.conf'.format(mail_dir))
+        logging.error(cmd)
+        logging.error('NOTMUCH_CONFIG: {0}/.notmuch.conf'.format(mail_dir))
         raise e
     logging.debug("Found files: {0}".format(len(files)))
     data = defaultdict(list)
@@ -79,7 +81,6 @@ def main(dest_box, is_gmail):
     for f in files:
         if not f:
             continue
-
         try:
             sha = digest(f)
             data[sha].append(f)
@@ -87,9 +88,11 @@ def main(dest_box, is_gmail):
             logging.warning('File %s does not exist' % f)
 
     for sha in data:
-        logging.debug("is_gmail = {0}, data[sha] = {1}".format(is_gmail, data[sha]))
+        logging.debug(
+            "is_gmail = {0}, data[sha] = {1}".format(is_gmail, data[sha]))
         if is_gmail and len(data[sha]) > 1:
-            logging.debug("Appended is_gmail {0}".format(pick_all_mail(data[sha])))
+            logging.debug(
+                "Appended is_gmail {0}".format(pick_all_mail(data[sha])))
             messages.append(pick_all_mail(data[sha]))
         else:
             logging.debug("Appended {0}".format(data[sha][0]))
@@ -105,20 +108,17 @@ def main(dest_box, is_gmail):
 
 
 if __name__ == '__main__':
-    p = OptionParser("usage: %prog [OPTIONS] [MAILDIR]")
+    p = OptionParser("usage: %prog [OPTIONS] MAILDIR")
     p.add_option('-g', '--gmail', dest='gmail',
                  action='store_true', default=True,
                  help='gmail-specific behavior')
     p.add_option('-G', '--not-gmail', dest='gmail',
                  action='store_false',
                  help='gmail-specific behavior')
-                 
+
     (options, args) = p.parse_args()
 
-    if args:
-        mail_dir = args[0]
-    else:
-        mail_dir = '~/Maildir'
+    mail_dir = args[0]
     dest = '~/.mutt/cache_mutt_results'
     logfile = '/tmp/notmuch.log'
     logging.basicConfig(filename=logfile, level=logging.DEBUG)
